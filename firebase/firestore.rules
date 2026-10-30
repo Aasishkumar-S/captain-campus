@@ -1,0 +1,170 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS
+    // =========================================================================
+
+    // Checks whether the incoming request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Checks if the authenticated user matches the specified document / user ID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Retrieves user data from /users/{userId} document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Checks if user document exists and has the given role
+    function hasRole(role) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == role;
+    }
+
+    // Checks if the user is an admin or super_admin
+    function isAdmin() {
+      return hasRole('admin') || hasRole('super_admin');
+    }
+
+    // Checks if the user is a super_admin
+    function isSuperAdmin() {
+      return hasRole('super_admin');
+    }
+
+    // Checks if user is active (not disabled or suspended)
+    function isActiveUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().status == 'active';
+    }
+
+    // =========================================================================
+    // USERS COLLECTION
+    // Users can read and update their own document (or admins can read/write)
+    // =========================================================================
+    match /users/{userId} {
+      // User can read their own profile, or admins can read any user doc
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Creation: Authenticated user can create their own doc on initial signup, or admin
+      allow create: if (isOwner(userId) && request.resource.data.role == 'student') || isAdmin();
+
+      // Update: User can update their own profile (cannot escalate their role), or admin
+      allow update: if (
+        isOwner(userId) &&
+        request.resource.data.role == resource.data.role &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']))
+      ) || isAdmin();
+
+      // Deletion: Admin only
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // BUSES COLLECTION
+    // Students / authenticated users can read. Client writes strictly denied for students.
+    // =========================================================================
+    match /buses/{busId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // ROUTES COLLECTION
+    // Authenticated users can read active routes. Client writes admin only.
+    // =========================================================================
+    match /routes/{routeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // STOPS COLLECTION
+    // Authenticated users can read transit stops. Client writes admin only.
+    // =========================================================================
+    match /stops/{stopId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // TRIPS COLLECTION
+    // Authenticated users can read scheduled / active trips. Writes admin only.
+    // =========================================================================
+    match /trips/{tripId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // ANNOUNCEMENTS COLLECTION
+    // Authenticated users can read announcements. Writes admin only.
+    // =========================================================================
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS COLLECTION
+    // Students can read/write (e.g. mark read) ONLY their own notifications.
+    // =========================================================================
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin();
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================================
+    // LIVE LOCATIONS (If synced into Firestore)
+    // Read allowed for authenticated users. All client writes denied.
+    // =========================================================================
+    match /liveLocations/{busId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Server Admin SDK only
+    }
+
+    // =========================================================================
+    // AUDIT LOGS COLLECTION
+    // Client-side writes are strictly forbidden. Server-only via Admin SDK.
+    // Super admins and admins may read.
+    // =========================================================================
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Server Admin SDK only
+    }
+
+    // =========================================================================
+    // GPS DEVICES COLLECTION
+    // Block access from all client-side writes. Admins can read.
+    // =========================================================================
+    match /gpsDevices/{deviceId} {
+      allow read: if isAdmin();
+      allow write: if false; // Managed via server backend Admin SDK
+    }
+
+    // =========================================================================
+    // DRIVERS COLLECTION
+    // Authenticated users can read basic driver info. Writes admin only.
+    // =========================================================================
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // DEFAULT CATCH-ALL: Deny everything else
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

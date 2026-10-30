@@ -1,0 +1,28 @@
+{
+  "name": "captain-campus",
+  "version": "1.0.0",
+  "description": "Smart College Bus Tracking & Transportation Management System",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/admin_web"
+  ],
+  "scripts": {
+    "backend:dev": "npm run dev --workspace=services/backend",
+    "admin:dev": "npm run dev --workspace=apps/admin_web",
+    "backend:build": "npm run build --workspace=services/backend",
+    "admin:build": "npm run build --workspace=apps/admin_web",
+    "shared:build": "npm run build --workspace=packages/shared_types",
+    "build:all": "npm run shared:build && npm run backend:build && npm run admin:build",
+    "test": "npm run test --workspaces --if-present",
+    "firebase:emulator": "firebase emulators:start --config firebase/firebase.json"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
